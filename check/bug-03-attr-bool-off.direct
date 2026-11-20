@@ -1,0 +1,9 @@
+# bug-03-attr-bool-off.direct -- marker file only; jig.c dispatches
+# on the "bug-03-" basename prefix to run_direct_bug03_attr_bool().
+#
+# Demonstrates isocline-issues.rst #3 (moderate): attr_update_bool()
+# in src/bbcode.c has "if (strcmp(value,"on") || strcmp(value,"true")
+# || strcmp(value,"1"))", which is always true (a string can't equal
+# all three at once, so at most one strcmp() is 0 and the other two
+# are always nonzero/true) -- so bbcode markup like "[bold=off]"
+# always turns the attribute ON instead of off.

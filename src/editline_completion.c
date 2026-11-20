@@ -213,12 +213,27 @@ again:
     edit_refresh(env,eb);
     c = 0; // ignore and return
   }
-  else if (selected >= 0 && (c == KEY_ENTER || c == KEY_RIGHT || c == KEY_END)) /* || c == KEY_TAB*/ {  
+  else if (c == ' ') {
+    // SPACE always completes to the current entry (defaulting to the
+    // first one if none was explicitly highlighted yet via the arrow
+    // keys) and then inserts a literal space after it, so the user
+    // can immediately continue typing the next token. Otherwise it is
+    // just an ordinary character and the generic "accept the preview
+    // and keep typing" branch below would insert it verbatim instead
+    // of completing the menu selection.
+    ssize_t isel = (selected >= 0 ? selected : 0);
+    assert(isel < count);
+    c = 0;
+    if (edit_complete(env, eb, isel)) {
+      edit_insert_char(env, eb, ' ');
+    }
+  }
+  else if (selected >= 0 && (c == KEY_ENTER || c == KEY_RIGHT || c == KEY_END)) /* || c == KEY_TAB*/ {
     // select the current entry
     assert(selected < count);
-    c = 0;      
+    c = 0;
     if (edit_complete(env, eb, selected) && env->complete_autotab) {
-      tty_code_pushback(env->tty,KEY_EVENT_AUTOTAB); // immediately try to complete again        
+      tty_code_pushback(env->tty,KEY_EVENT_AUTOTAB); // immediately try to complete again
     }
   }
   else if (!env->complete_nopreview && !code_is_virt_key(c)) {

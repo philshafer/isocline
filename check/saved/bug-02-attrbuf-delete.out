@@ -1,0 +1,8 @@
+input: [width="5;right"][color=red]abc[/color][color=green]defgh[/color][/width]
+text:  defgh
+attr[0] char='d' color=0x01008000 (expected every char green = 0x01008000) ok
+attr[1] char='e' color=0x01008000 (expected every char green = 0x01008000) ok
+attr[2] char='f' color=0x01008000 (expected every char green = 0x01008000) ok
+attr[3] char='g' color=0x01008000 (expected every char green = 0x01008000) ok
+attr[4] char='h' color=0x01008000 (expected every char green = 0x01008000) ok
+RESULT: PASS

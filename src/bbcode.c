@@ -207,10 +207,10 @@ static bool bbcode_close( bbcode_t* bb, ssize_t base, const char* name, tag_t* p
 //-------------------------------------------------------------
 
 static const char* attr_update_bool( const char* fname, signed int* field, const char* value ) {
-  if (value == NULL || value[0] == 0 || strcmp(value,"on") || strcmp(value,"true") || strcmp(value,"1")) {
+  if (value == NULL || value[0] == 0 || strcmp(value,"on") == 0 || strcmp(value,"true") == 0 || strcmp(value,"1") == 0) {
     *field = IC_ON;
   }
-  else if (strcmp(value,"off") || strcmp(value,"false") || strcmp(value,"0")) {
+  else if (strcmp(value,"off") == 0 || strcmp(value,"false") == 0 || strcmp(value,"0") == 0) {
     *field = IC_OFF;
   }
   else {

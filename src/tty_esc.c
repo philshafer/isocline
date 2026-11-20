@@ -270,7 +270,7 @@ static code_t tty_read_csi(tty_t* tty, uint8_t c1, uint8_t peek, code_t mods0, l
   uint8_t final = peek;
   code_t  modifiers = mods0;
 
-  debug_msg("tty: escape sequence: ESC %c %c %d;%d %c\n", c1, (special == 0 ? '_' : special), num1, num2, final);
+  debug_msg("tty: escape sequence: ESC %c %c %u;%u %c\n", c1, (special == 0 ? '_' : special), num1, num2, final);
   
   // Adjust special cases into standard ones.
   if ((final == '@' || final == '9') && c1 == '[' && num1 == 1) {
@@ -333,7 +333,7 @@ static code_t tty_read_csi(tty_t* tty, uint8_t c1, uint8_t peek, code_t mods0, l
   }  
 
   if (code == KEY_NONE && final != 'R') { 
-    debug_msg("tty: ignore escape sequence: ESC %c %zu;%zu %c\n", c1, num1, num2, final); 
+    debug_msg("tty: ignore escape sequence: ESC %c %u;%u %c\n", c1, num1, num2, final);
   }
   return (code != KEY_NONE ? (code | modifiers) : KEY_NONE);
 }

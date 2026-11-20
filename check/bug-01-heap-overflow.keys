@@ -1,0 +1,21 @@
+# bug-01-heap-overflow.keys -- demonstrates isocline-issues.rst #1
+# (critical): sbuf_strdup_from_utf8() in src/stringbuf.c allocates
+# exactly len bytes and then writes a terminating NUL at s[len], one
+# byte past the allocation, whenever every input character is a
+# single byte. This is reachable on every ic_readline() call when the
+# terminal is not UTF-8 -- hit here by running under LC_ALL=en_US.US-ASCII
+# (see the ENV_bug-01-heap-overflow override in the Makefile; tty.c
+# treats the "C" locale itself as UTF-8-capable, so plain "C" will not
+# reach this path).
+#
+# Typing plain ASCII and pressing ENTER is enough to trigger the
+# overflow; under the ASan build the jig uses by default, this should
+# show up as a heap-buffer-overflow report in the captured output.
+# Once issue #1 is fixed, this report will disappear and the test
+# becomes a plain regression guard -- re-accept the golden output at
+# that point.
+i 2
++ hello
+k ENTER
+w 50
+q

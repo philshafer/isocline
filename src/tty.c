@@ -236,8 +236,13 @@ ic_private bool tty_read_esc_response(tty_t* tty, char esc_start, bool final_st,
   buf[0] = 0;
   ssize_t len = 0;
   uint8_t c = 0;
-  if (!tty_readc_noblock(tty, &c, 2*tty->esc_initial_timeout) || c != '\x1B') {
+  bool got = tty_readc_noblock(tty, &c, 2*tty->esc_initial_timeout);
+  if (!got || c != '\x1B') {
     debug_msg("initial esc response failed: 0x%02x\n", c);
+    // if a byte really was read, it is not part of our query response (the
+    // terminal did not answer in time and this is unrelated input that
+    // arrived instead) -- push it back so normal input processing sees it.
+    if (got) tty_cpush_char(tty, c);
     return false;
   }
   if (!tty_readc_noblock(tty, &c, tty->esc_timeout) || (c != esc_start)) return false;
@@ -592,7 +597,7 @@ static void sig_handler(int signum, siginfo_t* siginfo, void* uap ) {
   else {
     // the rest are termination signals; restore the terminal mode. (`tcsetattr` is signal-safe)
     if (sig_tty != NULL && sig_tty->raw_enabled) {
-      tcsetattr(sig_tty->fd_in, TCSAFLUSH, &sig_tty->orig_ios);
+      tcsetattr(sig_tty->fd_in, TCSANOW, &sig_tty->orig_ios);
       sig_tty->raw_enabled = false;
     }
   }
@@ -653,7 +658,7 @@ static void signals_restore(void) {
 ic_private bool tty_start_raw(tty_t* tty) {
   if (tty == NULL) return false;
   if (tty->raw_enabled) return true;
-  if (tcsetattr(tty->fd_in,TCSAFLUSH,&tty->raw_ios) < 0) return false;
+  if (tcsetattr(tty->fd_in,TCSANOW,&tty->raw_ios) < 0) return false;
   tty->raw_enabled = true;
   return true;
 }
@@ -662,7 +667,7 @@ ic_private void tty_end_raw(tty_t* tty) {
   if (tty == NULL) return;
   if (!tty->raw_enabled) return;
   tty->cpush_count = 0;
-  if (tcsetattr(tty->fd_in,TCSAFLUSH,&tty->orig_ios) < 0) return;
+  if (tcsetattr(tty->fd_in,TCSANOW,&tty->orig_ios) < 0) return;
   tty->raw_enabled = false;
 }
 

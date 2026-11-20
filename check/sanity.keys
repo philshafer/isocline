@@ -1,0 +1,9 @@
+# sanity.keys -- basic harness self-test: type a known completion,
+# accept it, and quit. This is here to prove the jig itself (pty,
+# fixed 24x80 size, completer, key encoding) works before trusting
+# any of the bug-demonstrating tests below.
+i 2
++ show arp
+k ENTER
+w 20
+q

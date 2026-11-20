@@ -1,0 +1,4 @@
+input: [bold=off]hello[/bold]
+text:  hello
+attr[0].bold = -1  (IC_OFF=-1 IC_ON=1 IC_NONE=0; expected IC_OFF)
+RESULT: PASS

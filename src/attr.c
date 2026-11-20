@@ -289,6 +289,6 @@ ic_private void attrbuf_delete_at( attrbuf_t* ab, ssize_t pos, ssize_t count ) {
   if (pos + count > ab->count) { count = ab->count - pos; }
   if (count == 0) return;
   assert(pos + count <= ab->count);
-  ic_memmove( ab->attrs + pos, ab->attrs + pos + count, ab->count - (pos + count) );
+  ic_memmove( ab->attrs + pos, ab->attrs + pos + count, (ab->count - (pos + count))*ssizeof(attr_t) );
   ab->count -= count;
 }

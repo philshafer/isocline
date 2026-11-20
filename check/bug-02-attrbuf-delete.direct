@@ -1,0 +1,12 @@
+# bug-02-attrbuf-delete.direct -- marker file only; jig.c dispatches
+# on the "bug-02-" basename prefix to run_direct_bug02_attrbuf_delete().
+#
+# Demonstrates isocline-issues.rst #2 (moderate): attrbuf_delete_at()
+# in src/attr.c passes an element count where ic_memmove() expects a
+# byte count, so it only moves 1/8 of the bytes it should. Reachable
+# from bbcode_restrict_width() (src/bbcode.c) whenever a right-aligned
+# width tag truncates its content from the front, which shifts the
+# surviving characters' attributes down -- and corrupts them under
+# this bug. (Markup needs quotes around the width value, e.g.
+# [width="5;right"], because the bare-token value scanner stops at
+# the first ';' -- quoting is what lets the align suffix through.)

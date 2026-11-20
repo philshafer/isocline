@@ -71,12 +71,12 @@ ic_private void completions_clear(completions_t* cms) {
   }
 }
 
-static void completions_push(completions_t* cms, const char* replacement, const char* display, const char* help, ssize_t delete_before, ssize_t delete_after) 
+static bool completions_push(completions_t* cms, const char* replacement, const char* display, const char* help, ssize_t delete_before, ssize_t delete_after)
 {
   if (cms->count >= cms->len) {
     ssize_t newlen = (cms->len <= 0 ? 32 : cms->len*2);
     completion_t* newelems = mem_realloc_tp(cms->mem, completion_t, cms->elems, newlen );
-    if (newelems == NULL) return;
+    if (newelems == NULL) return false;
     cms->elems = newelems;
     cms->len   = newlen;
   }
@@ -88,6 +88,7 @@ static void completions_push(completions_t* cms, const char* replacement, const 
   cm->delete_before = delete_before;
   cm->delete_after  = delete_after;
   cms->count++;
+  return true;
 }
 
 ic_private ssize_t completions_count(completions_t* cms) {
@@ -107,7 +108,7 @@ ic_private bool completions_add(completions_t* cms, const char* replacement, con
   cms->completer_max--;
   //debug_msg("completion: add: %d,%d, %s\n", delete_before, delete_after, replacement);
   if (!completions_contains(cms,replacement)) {
-    completions_push(cms, replacement, display, help, delete_before, delete_after);
+    return completions_push(cms, replacement, display, help, delete_before, delete_after);
   }
   return true;
 }
@@ -222,7 +223,14 @@ ic_private ssize_t completions_apply_longest_prefix(completions_t* cms, stringbu
   ssize_t delete_before = cm->delete_before;
   ic_strncpy( prefix, IC_MAX_PREFIX+1, cm->replacement, IC_MAX_PREFIX );
   prefix[IC_MAX_PREFIX] = 0;
-  
+  // if the cap landed inside a multi-byte utf-8 sequence, back up to its start
+  // (a continuation byte alone, or a lead byte with its continuation bytes cut
+  // off, is not a complete codepoint)
+  ssize_t plen = ic_strlen(prefix);
+  while (plen > 0 && utf8_is_cont((uint8_t)prefix[plen-1])) { plen -= 1; }
+  if (plen > 0 && (uint8_t)prefix[plen-1] >= 0xC0) { plen -= 1; }
+  prefix[plen] = 0;
+
   // and visit all others to find the longest common prefix
   for(ssize_t i = 1; i < cms->count; i++) {
     cm = completions_get(cms,i);

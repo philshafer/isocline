@@ -7,6 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif /* _WIN32 */
 
 #include "../include/isocline.h"
 #include "common.h"
@@ -78,9 +82,10 @@ ic_private bool history_push( history_t* h, const char* entry ) {
   if (h->len <= 0 || entry==NULL)  return false;
   // remove any older duplicate
   if (!h->allow_duplicates) {
-    for( int i = 0; i < h->count; i++) {
+    for( ssize_t i = 0; i < h->count; i++) {
       if (strcmp(h->elems[i],entry) == 0) {
         history_delete_at(h,i);
+        i -= 1;  // re-check the entry that just shifted into slot i
       }
     }
   }
@@ -256,11 +261,25 @@ ic_private void history_load( history_t* h ) {
 
 ic_private void history_save( const history_t* h ) {
   if (h->fname == NULL) return;
+  #ifndef _WIN32
+  /*
+   * Set the restricted mode atomically at creation time, so the file is
+   * never briefly visible with default-umask (group/world-readable)
+   * permissions before being narrowed.  fchmod() also re-narrows an
+   * existing file that was created with wider permissions previously.
+   */
+  int fd = open(h->fname, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+  if (fd < 0) return;
+  fchmod(fd, S_IRUSR | S_IWUSR);
+  FILE* f = fdopen(fd, "w");
+  if (f == NULL) {
+    close(fd);
+    return;
+  }
+  #else
   FILE* f = fopen(h->fname, "w");
   if (f == NULL) return;
-  #ifndef _WIN32
-  chmod(h->fname,S_IRUSR|S_IWUSR);
-  #endif
+  #endif /* _WIN32 */
   stringbuf_t* sbuf = sbuf_new(h->mem);
   if (sbuf != NULL) {
     for( int i = 0; i < h->count; i++ )  {
