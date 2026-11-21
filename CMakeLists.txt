@@ -36,6 +36,7 @@ if(IC_SEPARATE_OBJS)
               src/editline.c
               src/highlight.c
               src/history.c
+              src/keybind.c
               src/stringbuf.c
               src/term.c
               src/tty_esc.c

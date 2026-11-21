@@ -140,6 +140,13 @@ void ic_history_clear(void);
 /// Add an entry to the history
 void ic_history_add( const char* entry );
 
+/// The number of entries in the history.
+long ic_history_count(void);
+
+/// Get a history entry, in most-recent-first order (0 is the most recent entry).
+/// Returns NULL if `n` is out of range.
+const char* ic_history_get( long n );
+
 /// \}
 
 //--------------------------------------------------------------
@@ -436,6 +443,59 @@ bool ic_stop_completing( const ic_completion_env_t* cenv);
 bool ic_add_completion_prim( ic_completion_env_t* cenv, const char* completion,
                               const char* display, const char* help,
                                long delete_before, long delete_after);
+
+/// \}
+
+//--------------------------------------------------------------
+// Key Bindings
+//--------------------------------------------------------------
+
+/// \defgroup keybind Key Bindings
+/// Bind actions to specific keys, overriding the built-in behavior for that key.
+/// \{
+
+/// A key, as passed to `ic_bind_key` and `ic_unbind_key`.
+/// For plain keys this is just the ASCII byte (or unicode code point) of the key,
+/// for example `'a'`, `' '` (space), or `7` (ctrl-G, the "bell" character).
+/// Combine with `IC_KEY_MOD_ALT` for an Alt/Meta modified key, for example
+/// `(IC_KEY_MOD_ALT | '/')` for Alt-/.
+typedef long ic_key_t;
+
+/// Modifier bit for an Alt (Meta) modified key, see `ic_key_t`.
+#define IC_KEY_MOD_ALT  (0x20000000L)
+
+/// A key action environment, passed to a `ic_keyaction_fun_t`.
+struct ic_keyaction_env_s;
+
+/// A key action environment, passed to a `ic_keyaction_fun_t`.
+typedef struct ic_keyaction_env_s ic_keyaction_env_t;
+
+/// A key action callback, called by isocline when the bound key is pressed.
+typedef void (ic_keyaction_fun_t)( ic_keyaction_env_t* kenv );
+
+/// Bind an action to a key, overriding any built-in behavior for that key.
+/// Setting an action on an already bound key replaces the previous one.
+/// Returns `false` on failure (for example, out of memory).
+bool ic_bind_key( ic_key_t key, ic_keyaction_fun_t* action, void* arg );
+
+/// Remove a previously bound key action, restoring the built-in behavior for that key.
+/// Returns `false` if the key was not bound.
+bool ic_unbind_key( ic_key_t key );
+
+/// Get the current input (and cursor position if `cursor` != NULL) in a key action.
+const char* ic_keyaction_input( ic_keyaction_env_t* kenv, long* cursor );
+
+/// Get the key action argument passed to `ic_bind_key`.
+void* ic_keyaction_arg( const ic_keyaction_env_t* kenv );
+
+/// Suppress completions for the word currently being edited.
+/// The suppression is cleared automatically once editing crosses the next
+/// word boundary (for example, by typing a space).
+void ic_keyaction_dismiss_completions( ic_keyaction_env_t* kenv );
+
+/// Are completions currently suppressed for the word being edited?
+/// @see ic_keyaction_dismiss_completions()
+bool ic_keyaction_completions_suppressed( const ic_keyaction_env_t* kenv );
 
 /// \}
 

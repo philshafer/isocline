@@ -16,6 +16,7 @@
 #include "history.h"
 #include "completions.h"
 #include "bbcode.h"
+#include "keybind.h"
 
 //-------------------------------------------------------------
 // Environment
@@ -29,6 +30,7 @@ struct ic_env_s {
   completions_t*  completions;      // current completions
   history_t*      history;          // edit history
   bbcode_t*       bbcode;           // print with bbcodes
+  keybindings_t*  keybindings;      // user key bindings
   const char*     prompt_marker;    // the prompt marker (defaults to "> ")
   const char*     cprompt_marker;   // prompt marker for continuation lines (defaults to `prompt_marker`)
   ic_highlight_fun_t* highlighter;  // highlight callback

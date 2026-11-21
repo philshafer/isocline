@@ -33,8 +33,9 @@ typedef struct editor_s {
   ssize_t       cur_rows;     // current used rows to display our content (including extra content)
   ssize_t       cur_row;      // current row that has the cursor (0 based, relative to the prompt)
   ssize_t       termw;
-  bool          modified;     // has a modification happened? (used for history navigation for example)  
+  bool          modified;     // has a modification happened? (used for history navigation for example)
   bool          disable_undo; // temporarily disable auto undo (for history search)
+  bool          completions_suppressed; // completions dismissed for the current word (cleared at the next word boundary)
   ssize_t       history_idx;  // current index in the history 
   editstate_t*  undo;         // undo buffer  
   editstate_t*  redo;         // redo buffer
@@ -813,6 +814,10 @@ static void edit_insert_char(ic_env_t* env, editor_t* eb, char c) {
   editor_start_modify(eb);
   ssize_t nextpos = sbuf_insert_char_at( eb->input, c, eb->pos );
   if (nextpos >= 0) eb->pos = nextpos;
+  if (!ic_char_is_nonseparator(&c,1)) {
+    // crossed a word boundary: a dismissed completion list applied to the previous word only
+    eb->completions_suppressed = false;
+  }
   edit_auto_brace(env, eb, c);
   if (c=='\n') {
     editor_auto_indent(eb, "{", "}");  // todo: custom auto indent tokens?
@@ -917,7 +922,22 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     // if the user tries to move into a hint with left-cursor or end, we complete it first
     if ((c == KEY_RIGHT || c == KEY_END) && had_hint) {
       edit_generate_completions(env, &eb, true);
-      c = KEY_NONE;      
+      c = KEY_NONE;
+    }
+
+    // a user key binding takes priority over all built-in handling of this key,
+    // including the cancel behavior of ctrl+G/ctrl+C below
+    ic_keyaction_fun_t* kaction;
+    void* kaction_arg;
+    if (keybindings_find(env->keybindings, c, &kaction, &kaction_arg)) {
+      ic_keyaction_env_t kenv;
+      kenv.env        = env;
+      kenv.input      = sbuf_string(eb.input);
+      kenv.cursor     = (long)eb.pos;
+      kenv.arg        = kaction_arg;
+      kenv.suppressed = &eb.completions_suppressed;
+      (*kaction)(&kenv);
+      continue;
     }
 
     // Operations that may return

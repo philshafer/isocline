@@ -1,0 +1,32 @@
+# keybind.keys -- exercises step 4 of build/plans/isocline.rst: the
+# ic_bind_key()/ic_unbind_key() keybinding mechanism and the
+# ic_history_count()/ic_history_get() public accessors.  Driven
+# through the jig's test bindings on ctrl-G, ctrl-V and ctrl-X; see
+# jig_dismiss_action/jig_check_suppressed_action/jig_history_dump_action
+# in jig.c.
+#
+# Part 1 (keybindings): ctrl-G is hardwired by isocline to cancel and
+# clear the input outright.  "ab" surviving the ctrl-G below proves a
+# bound action overrides that built-in behavior completely.  The
+# suppression flag it sets (ic_keyaction_dismiss_completions) is then
+# observed still set (ctrl-V), cleared by the next word boundary (a
+# space), and observed cleared (ctrl-V again).
+i 2
++ ab
+k C-G
+k C-V
+k SPACE
+k C-V
+k ENTER
+w 20
+#
+# Part 2 (history accessors): "ab " is now the one completed entry in
+# the history.  Typing "cd" on this next line (without pressing
+# ENTER) leaves a fresh, still-blank placeholder entry live ahead of
+# it, so ic_history_count()/ic_history_get() report two entries,
+# most-recent first: index 0 is that blank placeholder, index 1 is
+# "ab ".
++ cd
+k C-X
+w 20
+q

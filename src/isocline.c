@@ -27,6 +27,7 @@
 # include "highlight.c"
 # include "undo.c"
 # include "history.c"
+# include "keybind.c"
 # include "completers.c"
 # include "completions.c"
 # include "term.c"
@@ -220,6 +221,16 @@ ic_public void ic_history_add( const char* entry ) {
 ic_public void ic_history_clear(void) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   history_clear(env->history);
+}
+
+ic_public long ic_history_count(void) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return 0;
+  return (long)history_count(env->history);
+}
+
+ic_public const char* ic_history_get( long n ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return NULL;
+  return history_get( env->history, (ssize_t)n );
 }
 
 ic_public bool ic_enable_auto_tab( bool enable ) {
@@ -494,6 +505,7 @@ static void ic_env_free(ic_env_t* env) {
   history_save(env->history);
   history_free(env->history);
   completions_free(env->completions);
+  keybindings_free(env->keybindings);
   bbcode_free(env->bbcode);
   term_free(env->term);
   tty_free(env->tty);
@@ -535,6 +547,7 @@ static ic_env_t* ic_env_create( ic_malloc_fun_t* _malloc, ic_realloc_fun_t* _rea
   env->term        = term_new(env->mem, env->tty, false, false, fd_out );
   env->history     = history_new(env->mem);
   env->completions = completions_new(env->mem);
+  env->keybindings = keybindings_new(env->mem);
   env->bbcode      = bbcode_new(env->mem, env->term);
   env->hint_delay  = 400;
 
