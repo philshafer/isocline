@@ -505,6 +505,12 @@ void ic_keyaction_dismiss_completions( ic_keyaction_env_t* kenv );
 /// @see ic_keyaction_dismiss_completions()
 bool ic_keyaction_completions_suppressed( const ic_keyaction_env_t* kenv );
 
+/// Replace part of the input from within a key action: delete
+/// `delete_before` bytes before the cursor and `delete_after` bytes after
+/// it, then insert `text` in their place and move the cursor past it.
+/// Returns `false` if `kenv` is invalid.
+bool ic_keyaction_replace( ic_keyaction_env_t* kenv, const char* text, long delete_before, long delete_after );
+
 /// \}
 
 //--------------------------------------------------------------
