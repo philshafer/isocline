@@ -29,11 +29,24 @@ ic_private bool keybindings_find(keybindings_t *kbs, code_t key,
         ic_keyaction_fun_t **action, void **arg);
 
 /*
+ * A key action's request to replace part of the input around the
+ * cursor, mirroring ic_completion_fun_t: delete "delete_before" bytes
+ * before the cursor and "delete_after" bytes after it, then insert
+ * "text" in their place.  "closure" is editline.c's editor_t, opaque
+ * here just like ic_completion_env_s's own closure is opaque to
+ * completions.c.
+ */
+typedef bool (ic_keyaction_replace_fun_t)( ic_env_t *env, void *closure,
+        const char *text, long delete_before, long delete_after );
+
+/*
  * The environment passed to a key action callback, mirroring
  * ic_completion_env_s: a snapshot of the current input/cursor plus
  * the bound arg.  "suppressed" points at the current editor's
  * completion-suppression flag so a callback can toggle it without
- * this header needing to know about editor_t.
+ * this header needing to know about editor_t.  "replace"/"closure"
+ * let a callback edit the input the same way; see
+ * ic_keyaction_replace().
  */
 struct ic_keyaction_env_s {
     ic_env_t    *env;
@@ -41,6 +54,8 @@ struct ic_keyaction_env_s {
     long        cursor;
     void        *arg;
     bool        *suppressed;
+    void        *closure;
+    ic_keyaction_replace_fun_t *replace;
 };
 
 #endif /* IC_KEYBIND_H */
