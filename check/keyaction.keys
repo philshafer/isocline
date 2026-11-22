@@ -1,0 +1,65 @@
+# keyaction.keys -- exercises step 6 of build/plans/isocline.rst: the
+# sdb-side "?"/ESC-//ESC-. key bindings, built on the generic
+# ic_keyaction_replace()/ic_bind_key() mechanism from steps 4/5.
+# CTRL-G (dismiss completions) reuses the mechanism already fully
+# exercised by keybind.keys, so it is not retested here.  Driven
+# through the jig's own fake bindings; see jig_help_action/
+# jig_dabbrev_action/jig_lastarg_action in jig.c.  The token-matching
+# logic itself (quote-scan, proper-prefix extension, last-token) is
+# covered headlessly by tests/sdb/keyaction.cmd against sdb's actual
+# isocline-agnostic functions; this file only exercises the keystroke
+# path a real raw-mode loop requires.
+#
+# Part 1 ("?"): inside an open quote, "?" self-inserts instead of
+# triggering completion, so quoted text isn't interrupted -- the line
+# ends up literally containing "?".
+i 2
++ "ab
+k ?
+k ENTER
+w 20
+#
+# Outside a quote, "?" prints the fake completer's matches for the
+# word up to the cursor without inserting anything or disturbing the
+# line -- "show v" narrows its three fixed commands down to just
+# "show version".
++ show v
+k ?
+k ENTER
+w 20
+#
+# Part 2 (ESC-/): two history entries share a "pr"-prefixed word in
+# different positions.  Submitted oldest first, so the dabbrev search
+# (newest history entry first) hits "print exactly" before "previous
+# print thing".
++ previous print thing
+k ENTER
+w 20
++ print exactly
+k ENTER
+w 20
+#
+# First press expands "pr" to the nearer match ("print"); a second
+# press on the same prefix cycles further back to "previous".  A
+# third press on the same line has no further match (both history
+# words are now consumed), so the line is left unchanged.
++ pr
+k E-/
+w 20
+k E-/
+w 20
+k E-/
+w 20
+k ENTER
+w 20
+#
+# Part 3 (ESC-.): the most recent history entry right now ("previous",
+# from the line just submitted) has a single token and is skipped;
+# ESC-. inserts the last token of the next entry back, "print exactly",
+# giving "exactly".
++ result:
+k E-.
+w 20
+k ENTER
+w 20
+q

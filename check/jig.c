@@ -329,6 +329,186 @@ jig_history_dump_action (ic_keyaction_env_t *kenv)
         ic_printf("[history: %ld: %s]\n", i, ic_history_get(i));
 }
 
+/*
+ * Key-action test: "?" -- self-insert inside an open quote (so quoted
+ * text isn't interrupted), otherwise print the fake completer's
+ * matches for the word up to the cursor without inserting anything.
+ * Exercises the same generic mechanism sdb's own "?" binding
+ * (slaxIoKeyHelp in libslax/slaxio.c) is built on.
+ */
+static void
+jig_help_action (ic_keyaction_env_t *kenv)
+{
+    static const char *cmds[] = {
+        "show interfaces", "show version", "show arp", NULL
+    };
+    long cursor;
+    const char *input = ic_keyaction_input(kenv, &cursor);
+    char quote = 0;
+
+    for (long i = 0; i < cursor; i += 1) {
+        if (quote != 0) {
+            if (input[i] == quote)
+                quote = 0;
+        } else if (input[i] == '\'' || input[i] == '"') {
+            quote = input[i];
+        }
+    }
+
+    if (quote != 0) {
+        ic_keyaction_replace(kenv, "?", 0, 0);
+        return;
+    }
+
+    ic_printf("\n[help:");
+    for (const char **pc = cmds; *pc != NULL; pc += 1) {
+        if (strncmp(*pc, input, (size_t) cursor) == 0)
+            ic_printf(" %s", *pc);
+    }
+    ic_printf("]\n");
+}
+
+static char *jig_dabbrev_prefix;
+static long jig_dabbrev_next;
+static long jig_dabbrev_suffixlen;
+
+/*
+ * Find the first word in "entry" that is a proper (longer) extension
+ * of "prefix".  Returns NULL if there is none.
+ */
+static const char *
+jig_dabbrev_match (const char *entry, const char *prefix, size_t prefixlen,
+        size_t *lenp)
+{
+    const char *cp = entry;
+
+    for (;;) {
+        while (*cp != 0 && isspace((unsigned char) *cp))
+            cp += 1;
+
+        if (*cp == 0)
+            return NULL;
+
+        const char *start = cp;
+
+        while (*cp != 0 && !isspace((unsigned char) *cp))
+            cp += 1;
+
+        if ((size_t) (cp - start) > prefixlen
+                && strncmp(start, prefix, prefixlen) == 0) {
+            *lenp = (size_t) (cp - start);
+            return start;
+        }
+    }
+}
+
+/*
+ * Key-action test: ESC-/ -- dabbrev-style expansion of the word
+ * before the cursor, searching backward through history (skipping
+ * history index 0, the in-progress line's own placeholder entry) for
+ * a word that properly extends it.  Repeated presses continue the
+ * same search, replacing the previous expansion with the next match
+ * further back.  Exercises the same generic mechanism sdb's own
+ * ESC-/ binding (slaxIoKeyDabbrevExpand) is built on.
+ */
+static void
+jig_dabbrev_action (ic_keyaction_env_t *kenv)
+{
+    long cursor;
+    const char *input = ic_keyaction_input(kenv, &cursor);
+    long wordstart = cursor;
+
+    while (wordstart > 0 && !isspace((unsigned char) input[wordstart - 1]))
+        wordstart -= 1;
+
+    long wordlen = cursor - wordstart;
+    size_t prefixlen = jig_dabbrev_prefix ? strlen(jig_dabbrev_prefix) : 0;
+    bool continuing = jig_dabbrev_prefix != NULL
+            && (size_t) wordlen == prefixlen + (size_t) jig_dabbrev_suffixlen
+            && strncmp(input + wordstart, jig_dabbrev_prefix, prefixlen) == 0;
+
+    if (!continuing) {
+        free(jig_dabbrev_prefix);
+        jig_dabbrev_prefix = strndup(input + wordstart, (size_t) wordlen);
+        jig_dabbrev_next = 1;
+        jig_dabbrev_suffixlen = 0;
+    }
+
+    prefixlen = strlen(jig_dabbrev_prefix);
+
+    long count = ic_history_count();
+    const char *match = NULL;
+    size_t matchlen = 0;
+
+    for ( ; jig_dabbrev_next < count; jig_dabbrev_next += 1) {
+        const char *entry = ic_history_get(jig_dabbrev_next);
+
+        if (entry == NULL)
+            continue;
+
+        match = jig_dabbrev_match(entry, jig_dabbrev_prefix, prefixlen,
+                &matchlen);
+
+        if (match != NULL) {
+            jig_dabbrev_next += 1;
+            break;
+        }
+    }
+
+    if (match != NULL) {
+        size_t suffixlen = matchlen - prefixlen;
+        char *suffix = (char *) alloca(suffixlen + 1);
+
+        memcpy(suffix, match + prefixlen, suffixlen);
+        suffix[suffixlen] = 0;
+
+        ic_keyaction_replace(kenv, suffix, jig_dabbrev_suffixlen, 0);
+        jig_dabbrev_suffixlen = (long) suffixlen;
+    }
+}
+
+/*
+ * Key-action test: ESC-. -- insert the last token of the most recent
+ * multi-token history entry, skipping single-token entries and
+ * history index 0 (the in-progress line's own placeholder entry).
+ * Exercises the same generic mechanism sdb's own ESC-. binding
+ * (slaxIoKeyLastArg) is built on.
+ */
+static void
+jig_lastarg_action (ic_keyaction_env_t *kenv)
+{
+    long count = ic_history_count();
+
+    for (long i = 1; i < count; i += 1) {
+        const char *entry = ic_history_get(i);
+
+        if (entry == NULL)
+            continue;
+
+        const char *end = entry + strlen(entry);
+
+        while (end > entry && isspace((unsigned char) end[-1]))
+            end -= 1;
+
+        const char *start = end;
+
+        while (start > entry && !isspace((unsigned char) start[-1]))
+            start -= 1;
+
+        if (start == entry)
+            continue;
+
+        size_t len = (size_t) (end - start);
+        char *token = (char *) alloca(len + 1);
+
+        memcpy(token, start, len);
+        token[len] = 0;
+
+        ic_keyaction_replace(kenv, token, 0, 0);
+        return;
+    }
+}
+
 static void
 run_child_readline_loop (void)
 {
@@ -338,6 +518,9 @@ run_child_readline_loop (void)
     ic_bind_key(7, &jig_dismiss_action, NULL);          /* ctrl-G */
     ic_bind_key(22, &jig_check_suppressed_action, NULL); /* ctrl-V */
     ic_bind_key(24, &jig_history_dump_action, NULL);     /* ctrl-X */
+    ic_bind_key('?', &jig_help_action, NULL);
+    ic_bind_key(IC_KEY_MOD_ALT | '/', &jig_dabbrev_action, NULL);
+    ic_bind_key(IC_KEY_MOD_ALT | '.', &jig_lastarg_action, NULL);
 
     for (;;) {
         char *line = ic_readline("jig> ");
