@@ -174,3 +174,14 @@ ic_keyaction_completions_suppressed (const ic_keyaction_env_t *kenv)
 
     return *kenv->suppressed;
 }
+
+ic_public bool
+ic_keyaction_replace (ic_keyaction_env_t *kenv, const char *text,
+        long delete_before, long delete_after)
+{
+    if (kenv == NULL || kenv->replace == NULL)
+        return false;
+
+    return (*kenv->replace)(kenv->env, kenv->closure, text, delete_before,
+            delete_after);
+}
