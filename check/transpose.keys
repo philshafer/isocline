@@ -1,0 +1,29 @@
+# transpose.keys -- exercises step 5 of build/plans/isocline.rst:
+# ic_enable_transpose_gosling(), enabled unconditionally in jig.c's
+# run_child_readline_loop() (no existing test used ctrl-T before this,
+# so this is safe to turn on for every ".keys" test).
+#
+# "ab", ctrl-T at end of line: with the Gosling behavior enabled this
+# swaps the last two characters ("ab" -> "ba") instead of doing
+# nothing (the plain sbuf_swap_char() end-of-line guard).  Typing "c"
+# then gives "bac".
+i 2
++ ab
+k C-T
++ c
+#
+# One LEFT puts the cursor between 'a' and 'c' (not at the end), so
+# the next ctrl-T takes the ordinary (non-Gosling) path: it swaps the
+# characters immediately before and after the cursor, "bac" -> "bca",
+# leaving the cursor between 'c' and 'a'.
+k LEFT
+k C-T
+k ENTER
+w 20
+#
+# Confirm what was actually committed by dumping the history (see
+# keybind.keys for the ctrl-X binding and the blank-placeholder-at-
+# index-0 caveat): index 1 should read "bca".
+k C-X
+w 20
+q

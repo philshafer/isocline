@@ -50,6 +50,7 @@ struct ic_env_s {
   bool            no_bracematch;    // enable brace matching?
   bool            no_autobrace;     // enable automatic brace insertion?
   bool            no_lscolors;      // use LSCOLORS/LS_COLORS to colorize file name completions?
+  bool            transpose_gosling; // transpose the last two characters when swapping at end of line?
   long            hint_delay;       // delay before displaying a hint in milliseconds
 };
 

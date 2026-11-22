@@ -61,6 +61,7 @@ ic_private ssize_t sbuf_next_ofs(stringbuf_t* sbuf, ssize_t pos, ssize_t* cwidth
 ic_private ssize_t sbuf_delete_char_before( stringbuf_t* sbuf, ssize_t pos );
 ic_private void    sbuf_delete_char_at( stringbuf_t* sbuf, ssize_t pos );
 ic_private ssize_t sbuf_swap_char( stringbuf_t* sbuf, ssize_t pos );
+ic_private ssize_t sbuf_swap_char_gosling( stringbuf_t* sbuf, ssize_t pos );
 
 ic_private ssize_t sbuf_find_line_start( stringbuf_t* sbuf, ssize_t pos );
 ic_private ssize_t sbuf_find_line_end( stringbuf_t* sbuf, ssize_t pos );

@@ -747,10 +747,11 @@ static void edit_delete_word(ic_env_t* env, editor_t* eb) {
   edit_refresh(env,eb);
 }
 
-static void edit_swap_char( ic_env_t* env, editor_t* eb ) { 
-  if (eb->pos <= 0 || eb->pos == sbuf_len(eb->input)) return;
+static void edit_swap_char( ic_env_t* env, editor_t* eb ) {
+  if (eb->pos <= 0) return;
+  if (eb->pos == sbuf_len(eb->input) && !env->transpose_gosling) return;
   editor_start_modify(eb);
-  eb->pos = sbuf_swap_char(eb->input,eb->pos);
+  eb->pos = sbuf_swap_char_gosling(eb->input,eb->pos);
   edit_refresh(env,eb);
 }
 

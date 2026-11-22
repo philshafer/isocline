@@ -354,6 +354,14 @@ bool ic_enable_color( bool enable );
 /// Returns the previous setting.
 bool ic_enable_history_duplicates( bool enable );
 
+/// Disable or enable Gosling-style `ctrl-T` transposition at the end of a
+/// line (disabled by default). Normally `ctrl-T` swaps the characters
+/// before and after the cursor and does nothing at the end of a line (no
+/// character follows); when enabled, at the end of a line it instead swaps
+/// the last two characters, as in GNU Emacs' `transpose-chars`.
+/// Returns the previous setting.
+bool ic_enable_transpose_gosling( bool enable );
+
 /// Disable or enable automatic tab completion after a completion
 /// to expand as far as possible if the completions are unique. (disabled by default).
 /// Returns the previous setting.

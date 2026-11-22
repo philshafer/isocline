@@ -802,6 +802,26 @@ ic_private ssize_t sbuf_swap_char( stringbuf_t* sbuf, ssize_t pos ) {
   return pos - prev;
 }
 
+// like sbuf_swap_char, but without the end-of-line guard: if there is no
+// character after `pos`, transpose the two characters before it instead
+// (classic Emacs/Gosling "transpose-chars at eol" behavior), leaving the
+// cursor at `pos`.
+ic_private ssize_t sbuf_swap_char_gosling( stringbuf_t* sbuf, ssize_t pos ) {
+  ssize_t next = sbuf_next_ofs(sbuf, pos, NULL);
+  if (next > 0) return sbuf_swap_char(sbuf, pos);
+  ssize_t prev1 = sbuf_prev_ofs(sbuf, pos, NULL);
+  if (prev1 <= 0) return pos;
+  ssize_t prev2 = sbuf_prev_ofs(sbuf, pos - prev1, NULL);
+  if (prev2 <= 0) return pos;
+  char buf[64];
+  if (prev2 >= 63) return pos;
+  ssize_t start = pos - prev1 - prev2;
+  ic_memcpy(buf, sbuf->buf + start, prev2);
+  ic_memmove(sbuf->buf + start, sbuf->buf + start + prev2, prev1);
+  ic_memmove(sbuf->buf + start + prev1, buf, prev2);
+  return pos;
+}
+
 ic_private ssize_t sbuf_find_line_start( stringbuf_t* sbuf, ssize_t pos ) {
   return str_find_line_start( sbuf->buf, sbuf->count, pos);
 }

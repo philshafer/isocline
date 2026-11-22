@@ -334,6 +334,7 @@ run_child_readline_loop (void)
 {
     ic_set_history(NULL, -1);
     ic_set_default_completer(&jig_completer, NULL);
+    ic_enable_transpose_gosling(true);
     ic_bind_key(7, &jig_dismiss_action, NULL);          /* ctrl-G */
     ic_bind_key(22, &jig_check_suppressed_action, NULL); /* ctrl-V */
     ic_bind_key(24, &jig_history_dump_action, NULL);     /* ctrl-X */
