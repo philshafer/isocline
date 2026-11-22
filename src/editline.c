@@ -823,7 +823,21 @@ static void edit_insert_char(ic_env_t* env, editor_t* eb, char c) {
   if (c=='\n') {
     editor_auto_indent(eb, "{", "}");  // todo: custom auto indent tokens?
   }
-  edit_refresh_hint(env,eb);  
+  edit_refresh_hint(env,eb);
+}
+
+// backs ic_keyaction_replace(): apply a key action's requested edit the
+// same way edit_complete() applies a completion, but from explicit
+// delete_before/delete_after counts rather than a completions_t entry
+static bool edit_keyaction_replace(ic_env_t* env, void* closure, const char* text, long delete_before, long delete_after) {
+  editor_t* eb = (editor_t*)closure;
+  editor_start_modify(eb);
+  ssize_t start = eb->pos - delete_before;
+  if (start < 0) start = 0;
+  sbuf_delete_from_to(eb->input, start, eb->pos + delete_after);
+  eb->pos = sbuf_insert_at(eb->input, text, start);
+  edit_refresh(env, eb);
+  return true;
 }
 
 //-------------------------------------------------------------
@@ -937,6 +951,8 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       kenv.cursor     = (long)eb.pos;
       kenv.arg        = kaction_arg;
       kenv.suppressed = &eb.completions_suppressed;
+      kenv.closure    = &eb;
+      kenv.replace    = &edit_keyaction_replace;
       (*kaction)(&kenv);
       continue;
     }
