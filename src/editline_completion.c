@@ -42,9 +42,64 @@ static bool edit_complete(ic_env_t* env, editor_t* eb, ssize_t idx) {
   return buf_or_pos_changed;
 }
 
+// commit the currently selected live-list candidate into the input; unlike
+// edit_generate_completions() this never falls into the blocking menu.
+// list_selected is a "real" (informational-row-excluded) index, so it is
+// offset by the informational row count to land on the matching array
+// entry; see completions_add_info().
+static bool edit_complete_live_selected(ic_env_t* env, editor_t* eb) {
+  if (eb->list_count <= 0 || eb->list_selected < 0) return false;
+  ssize_t idx = completions_count_info(env->completions) + eb->list_selected;
+  bool changed = edit_complete(env, eb, idx);
+  eb->list_count = 0;
+  eb->list_selected = -1;
+  eb->list_open = false;
+  return changed;
+}
+
+// commit the longest prefix common to every live-list candidate (not just
+// the selected one) and hide the list; returns whether that prefix landed
+// on a word boundary in every candidate, so the caller knows whether it is
+// safe to also insert a separator
+static bool edit_complete_live_prefix(ic_env_t* env, editor_t* eb) {
+  if (eb->list_count <= 0) return false;
+  editor_start_modify(eb);
+  bool full_token = false;
+  ssize_t newpos = completions_apply_longest_prefix(env->completions, eb->input, eb->pos, &full_token);
+  edit_completion_commit(eb, newpos);
+  eb->list_count = 0;
+  eb->list_selected = -1;
+  eb->list_open = false;
+  sbuf_clear(eb->extra);
+  edit_refresh(env, eb);
+  return full_token;
+}
+
+// reveal the live completion list for the word at the cursor, or
+// complete it directly when there's only one candidate; shared by the
+// TAB/alt-? handling in edit_line() and ic_keyaction_open_completions().
+// An informational-only list (no real candidates, just a row added by
+// completions_add_info(), such as sdb's "<[Enter]> Execute this
+// command") is also worth opening, since it has something to show even
+// though there is nothing to complete.
+static void edit_open_completions(ic_env_t* env, editor_t* eb) {
+  if (eb->list_count == 1) {
+    if (edit_complete_live_prefix(env, eb))
+      edit_insert_char(env, eb, ' ');
+  }
+  else if (eb->list_count > 1
+           || completions_count_info(env->completions) > 0) {
+    eb->list_open = true;
+    edit_refresh_hint(env, eb);
+  }
+  else {
+    term_beep(env->term);
+  }
+}
+
 static void edit_complete_longest_prefix(ic_env_t* env, editor_t* eb ) {
   editor_start_modify(eb);
-  ssize_t newpos = completions_apply_longest_prefix( env->completions, eb->input, eb->pos );
+  ssize_t newpos = completions_apply_longest_prefix( env->completions, eb->input, eb->pos, NULL );
   edit_completion_commit(eb, newpos);
 }
 
@@ -54,7 +109,7 @@ ic_private void sbuf_append_tagged( stringbuf_t* sb, const char* tag, const char
   sbuf_append(sb,"[/]");
 }
 
-static void editor_append_completion(ic_env_t* env, editor_t* eb, ssize_t idx, ssize_t width, bool numbered, bool selected ) {
+static void editor_append_completion(ic_env_t* env, editor_t* eb, ssize_t idx, ssize_t width, bool numbered, bool selected, const char* selected_style ) {
   const char* help = NULL;
   const char* display = completions_get_display(env->completions, idx, &help);
   if (display == NULL) return;
@@ -62,20 +117,116 @@ static void editor_append_completion(ic_env_t* env, editor_t* eb, ssize_t idx, s
     sbuf_appendf(eb->extra, "[ic-info]%s%zd [/]", (selected ? (tty_is_utf8(env->tty) ? "\xE2\x86\x92" : "*") : " "), 1 + idx);
     width -= 3;
   }
+  else if (env->complete_no_numbers) {
+    // plain two-space indent with the name padded to a fixed column,
+    // instead of the classic numbered-menu layout
+    sbuf_append(eb->extra, "  ");
+    width = 15;
+  }
+
+  // when a row is selected and the whole-row-inverse style is on, the
+  // name and help render together under a single style tag so help
+  // loses its usual dim styling too
+  bool whole_row = (selected && !numbered && env->complete_inverse_selection);
 
   if (width > 0) {
     sbuf_appendf(eb->extra, "[width=\"%zd;left; ;on\"]", width );
   }
   if (selected) {
-    sbuf_append(eb->extra, "[ic-emphasis]");
+    sbuf_appendf(eb->extra, "[%s]", selected_style);
   }
   sbuf_append(eb->extra, display);
-  if (selected) { sbuf_append(eb->extra,"[/ic-emphasis]"); }
+  if (selected && !whole_row) { sbuf_appendf(eb->extra,"[/%s]", selected_style); }
   if (help != NULL) {
     sbuf_append(eb->extra, "  ");
-    sbuf_append_tagged(eb->extra, "ic-info", help );      
+    if (whole_row)
+      sbuf_append(eb->extra, help);
+    else
+      sbuf_append_tagged(eb->extra, "ic-info", help );
   }
-  if (width > 0) { sbuf_append(eb->extra,"[/width]"); }  
+  if (selected && whole_row) { sbuf_appendf(eb->extra,"[/%s]", selected_style); }
+  if (width > 0) { sbuf_append(eb->extra,"[/width]"); }
+}
+
+// recompute the live completion list for the current word and set eb->hint
+// to the selected candidate's remaining text; hides both when completions
+// are suppressed for this word (ic_keyaction_dismiss_completions())
+static void edit_update_live_list(ic_env_t* env, editor_t* eb) {
+  if (eb->completions_suppressed) {
+    eb->list_count = 0;
+    eb->list_open = false;
+    return;
+  }
+
+  // "count" excludes any informational (display-only) rows added via
+  // completions_add_info(); "infocnt" is just those.  Array indices into
+  // env->completions therefore run [0, infocnt) for informational rows
+  // and [infocnt, infocnt + count) for real candidates, since sorting
+  // always puts the (empty-replacement) informational rows first.
+  ssize_t count = completions_generate(env, env->completions, sbuf_string(eb->input), eb->pos, IC_MAX_COMPLETIONS_TO_TRY);
+  ssize_t infocnt = completions_count_info(env->completions);
+  if (count <= 0 && infocnt <= 0) {
+    eb->list_count = 0;
+    eb->list_open = false;
+    return;
+  }
+  completions_sort(env->completions);
+
+  // a single, unambiguous match is always "selected" -- there is nothing
+  // else to toggle to; with two or more, a selection out of range (the
+  // set narrowed or widened since the last keystroke) goes back to "none"
+  if (count == 1)
+    eb->list_selected = 0;
+  else if (eb->list_selected >= count)
+    eb->list_selected = -1;
+  eb->list_count = count;
+
+  const bool show_list = (eb->list_open && (count > 1 || infocnt > 0));
+
+  if (eb->list_selected >= 0) {
+    const char* help = NULL;
+    const char* hint = completions_get_hint(env->completions, infocnt + eb->list_selected, &help);
+    if (hint != NULL) {
+      sbuf_replace(eb->hint, hint);
+      editor_append_hint_help(eb, help);
+    }
+  }
+  else {
+    // nothing selected: no dim hint follows the cursor
+    sbuf_clear(eb->hint);
+    sbuf_clear(eb->hint_help);
+  }
+
+  sbuf_clear(eb->extra);
+  if (!show_list) return;
+
+  if (env->complete_no_numbers)
+    sbuf_append(eb->extra, "[ic-info]Possible completions:[/]\n");
+
+  for (ssize_t i = 0; i < infocnt; i++) {
+    if (i > 0) sbuf_append(eb->extra, "\n");
+    editor_append_completion(env, eb, i, -1, false, false, "ic-selected");
+  }
+
+  if (count <= 0)
+    return;
+
+  ssize_t termh = term_get_height(env->term);
+  ssize_t maxrows = termh / 3;
+  if (maxrows < 1) maxrows = 1;
+  ssize_t first = 0;
+  if (count > maxrows) {
+    ssize_t sel = (eb->list_selected < 0 ? 0 : eb->list_selected);
+    first = sel - maxrows + 1;
+    if (first < 0) first = 0;
+    if (first + maxrows > count) first = count - maxrows;
+  }
+  ssize_t last = (count > maxrows ? first + maxrows - 1 : count - 1);
+
+  for (ssize_t i = first; i <= last; i++) {
+    if (i > first || infocnt > 0) sbuf_append(eb->extra, "\n");
+    editor_append_completion(env, eb, infocnt + i, -1, false, i == eb->list_selected, "ic-selected");
+  }
 }
 
 // 2 and 3 column output up to 80 wide
@@ -87,18 +238,18 @@ static void editor_append_completion(ic_env_t* env, editor_t* eb, ssize_t idx, s
 #define IC_DISPLAY3_COL    (3+IC_DISPLAY3_MAX)
 #define IC_DISPLAY3_WIDTH  (3*IC_DISPLAY3_COL + 2*2)  // 76
 
-static void editor_append_completion2(ic_env_t* env, editor_t* eb, ssize_t col_width, ssize_t idx1, ssize_t idx2, ssize_t selected ) {  
-  editor_append_completion(env, eb, idx1, col_width, true, (idx1 == selected) );
+static void editor_append_completion2(ic_env_t* env, editor_t* eb, ssize_t col_width, ssize_t idx1, ssize_t idx2, ssize_t selected ) {
+  editor_append_completion(env, eb, idx1, col_width, true, (idx1 == selected), "ic-emphasis" );
   sbuf_append( eb->extra, "  ");
-  editor_append_completion(env, eb, idx2, col_width, true, (idx2 == selected) );
+  editor_append_completion(env, eb, idx2, col_width, true, (idx2 == selected), "ic-emphasis" );
 }
 
-static void editor_append_completion3(ic_env_t* env, editor_t* eb, ssize_t col_width, ssize_t idx1, ssize_t idx2, ssize_t idx3, ssize_t selected ) {  
-  editor_append_completion(env, eb, idx1, col_width, true, (idx1 == selected) );
+static void editor_append_completion3(ic_env_t* env, editor_t* eb, ssize_t col_width, ssize_t idx1, ssize_t idx2, ssize_t idx3, ssize_t selected ) {
+  editor_append_completion(env, eb, idx1, col_width, true, (idx1 == selected), "ic-emphasis" );
   sbuf_append( eb->extra, "  ");
-  editor_append_completion(env, eb, idx2, col_width, true, (idx2 == selected));
+  editor_append_completion(env, eb, idx2, col_width, true, (idx2 == selected), "ic-emphasis" );
   sbuf_append( eb->extra, "  ");
-  editor_append_completion(env, eb, idx3, col_width, true, (idx3 == selected) );
+  editor_append_completion(env, eb, idx3, col_width, true, (idx3 == selected), "ic-emphasis" );
 }
 
 static ssize_t edit_completions_max_width( ic_env_t* env, ssize_t count ) {
@@ -152,7 +303,7 @@ again:
     percolumn = count_displayed;
     for (ssize_t i = 0; i < count_displayed; i++) {
       if (i > 0) sbuf_append(eb->extra, "\n");
-      editor_append_completion(env, eb, i, -1, true /* numbered */, selected == i);
+      editor_append_completion(env, eb, i, -1, true /* numbered */, selected == i, "ic-emphasis");
     }
   }
   if (count > count_displayed) {
