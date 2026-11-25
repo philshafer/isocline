@@ -185,3 +185,12 @@ ic_keyaction_replace (ic_keyaction_env_t *kenv, const char *text,
     return (*kenv->replace)(kenv->env, kenv->closure, text, delete_before,
             delete_after);
 }
+
+ic_public void
+ic_keyaction_open_completions (ic_keyaction_env_t *kenv)
+{
+    if (kenv == NULL || kenv->open_completions == NULL)
+        return;
+
+    (*kenv->open_completions)(kenv->env, kenv->closure);
+}
