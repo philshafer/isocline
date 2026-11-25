@@ -40,13 +40,24 @@ typedef bool (ic_keyaction_replace_fun_t)( ic_env_t *env, void *closure,
         const char *text, long delete_before, long delete_after );
 
 /*
+ * A key action's request to open (or, for a single unambiguous match,
+ * directly complete) the live completion list for the word at the
+ * cursor, the same way TAB does.  "closure" is editline.c's editor_t,
+ * opaque here just like "replace"'s.
+ */
+typedef void (ic_keyaction_open_completions_fun_t)( ic_env_t *env,
+        void *closure );
+
+/*
  * The environment passed to a key action callback, mirroring
  * ic_completion_env_s: a snapshot of the current input/cursor plus
  * the bound arg.  "suppressed" points at the current editor's
  * completion-suppression flag so a callback can toggle it without
  * this header needing to know about editor_t.  "replace"/"closure"
  * let a callback edit the input the same way; see
- * ic_keyaction_replace().
+ * ic_keyaction_replace().  "open_completions" lets a callback reveal
+ * the live completion list the same way; see
+ * ic_keyaction_open_completions().
  */
 struct ic_keyaction_env_s {
     ic_env_t    *env;
@@ -56,6 +67,7 @@ struct ic_keyaction_env_s {
     bool        *suppressed;
     void        *closure;
     ic_keyaction_replace_fun_t *replace;
+    ic_keyaction_open_completions_fun_t *open_completions;
 };
 
 #endif /* IC_KEYBIND_H */
