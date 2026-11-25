@@ -1,0 +1,68 @@
+# livelist.keys -- exercises step 7 of build/plans/isocline.rst: the
+# non-modal live completion list (ic_enable_completion_live_list()) and
+# accept-on-space (ic_enable_completion_accept_on_space()).  Both are
+# turned on only for this test, by jig.c's run_child_readline_loop()
+# recognizing the "livelist" basename -- every other ".keys" test keeps
+# the classic single-match hint behavior unchanged.
+#
+# Part 1 (list navigation, then ENTER with several candidates still
+# listed): "show" matches all nine of the fake completer's candidates
+# (every one starts with "show"), sorted alphabetically with "show
+# arp" first and selected.  TAB/DOWN move forward, UP/SHIFT-TAB move
+# back, all wrapping; one full lap (TAB, DOWN, UP, SHIFT-TAB) is a net
+# no-op and lands back on "show arp".  ENTER is then pressed directly,
+# with no RIGHT/END first: it must both materialize the selected
+# candidate into the buffer and submit the line in the same keystroke.
+i 2
++ show
+k TAB
+k DOWN
+k UP
+k SHIFT-TAB
+w 20
+k ENTER
+w 20
+#
+# Part 2 (accept-on-space with a single remaining match): "show a"
+# narrows the list to just "show arp".  With only one candidate its
+# longest common prefix is the whole match, which is trivially a full
+# token, so SPACE both completes it and adds the separator itself
+# ("show arp "), exactly as the single-candidate case always did.  The
+# list then has nothing to show for "show arp now" (no candidate
+# starts with it), so the rest types in as ordinary self-insert and
+# ENTER submits normally, with no hint pending.
++ show a
+k SPACE
++ now
+k ENTER
+w 20
+#
+# Part 3 (ENTER completes and submits a single match): "show in"
+# leaves only "show interfaces" matching, with its remaining text
+# showing as a hint and the list collapsed to that one row.  ENTER
+# again completes and submits in the same keystroke -- the same fix as
+# part 1, now for a single candidate instead of nine.
++ show in
+k ENTER
+w 20
+#
+# Part 4 (accept-on-space with a genuinely ambiguous, non-full-token
+# prefix): "show why mo" matches only "show why more or less" and
+# "show why more works".  Their longest common prefix is "show why
+# more " -- it already ends in the shared space from "more", but the
+# very next character is still ambiguous ('o' vs 'w'), so it is not a
+# full token.  SPACE extends the buffer to that common prefix and
+# clears the list, but adds no space of its own, so the plain "x"
+# typed right after lands after the single existing space, not two.
++ show why mo
+k SPACE
++ x
+k ENTER
+w 20
+#
+# Confirm what actually got committed, most-recent first: index 0
+# "show why more x" (part 4), index 1 "show interfaces" (part 3),
+# index 2 "show arp now" (part 2), index 3 "show arp" (part 1).
+k C-X
+w 20
+q
