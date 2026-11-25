@@ -371,6 +371,56 @@ bool ic_enable_auto_tab( bool enable );
 /// Returns the previous setting.
 bool ic_enable_completion_preview( bool enable );
 
+/// Disable or enable a non-modal, one-candidate-per-line completion list
+/// that is shown below the input and kept up to date as you type (disabled
+/// by default). `tab` reveals the list for an ambiguous prefix with
+/// nothing selected yet; from there `down`/`ctrl+down` move the selection
+/// forward (starting at the first candidate) and `up`/`shift+tab`/
+/// `ctrl+up` move it backward, both wrapping through "nothing selected".
+/// Once a candidate is selected, its remaining text is also shown as a
+/// dimmed inline hint, and `right`/`end`/`enter` commit it, reverting to
+/// their normal meaning whenever nothing is selected. `tab` on a single,
+/// unambiguous match completes it directly instead of opening the list,
+/// adding a trailing separator when that used up the whole token. This is
+/// a separate, additive path from the existing `tab`-triggered modal
+/// completion menu, which keeps working unchanged when this is left
+/// disabled.
+/// Returns the previous setting.
+bool ic_enable_completion_live_list( bool enable );
+
+/// While the live completion list from `ic_enable_completion_live_list` is
+/// showing, make `space` complete the longest prefix common to the current
+/// candidates (the same completion `tab` would do on a single match), so
+/// e.g. "i b" completes to "info breakpoints " (disabled by default, in
+/// which case `space` always just self-inserts).
+/// Returns the previous setting.
+bool ic_enable_completion_accept_on_space( bool enable );
+
+/// While the live completion list from `ic_enable_completion_live_list` is
+/// showing, lay out each row as a two-space indent, the candidate name
+/// left-padded to a fixed column, and then its help text, instead of the
+/// leading " N " index column used by the classic modal menu (disabled by
+/// default; the live list already omits the index column either way, so
+/// this mainly selects the padded layout).
+/// Returns the previous setting.
+bool ic_no_numbers( bool enable );
+
+/// While the live completion list from `ic_enable_completion_live_list` is
+/// showing, suppress the arrow/"*" marker normally used by the classic
+/// modal menu to indicate the selected row (disabled by default; the live
+/// list never shows that marker either way, so this only affects the
+/// classic menu).
+/// Returns the previous setting.
+bool ic_no_selection_arrow( bool enable );
+
+/// While the live completion list from `ic_enable_completion_live_list` is
+/// showing, render the whole selected row (its name and help text
+/// together) in inverse video instead of the usual per-field styling,
+/// which otherwise only highlights the name and leaves the help text
+/// dimmed (disabled by default).
+/// Returns the previous setting.
+bool ic_inverse_selection( bool enable );
+
 /// Disable or enable automatic identation of continuation lines in multiline
 /// input so it aligns with the initial prompt.
 /// Returns the previous setting.
@@ -452,6 +502,17 @@ bool ic_add_completion_prim( ic_completion_env_t* cenv, const char* completion,
                               const char* display, const char* help,
                                long delete_before, long delete_after);
 
+/// Add a display-only row to the live completion list from
+/// `ic_enable_completion_live_list`: it always sorts and renders first,
+/// and takes no part in completion -- it is never the target of a
+/// single-candidate tab/space completion, never counts toward
+/// ambiguous-match logic, and selecting it leaves the input and cursor
+/// untouched.  Has no effect on the classic completion menu.
+/// (both are copied by isocline and do not need to be preserved or allocated).
+/// Returns `false` on failure (for example, out of memory).
+bool ic_add_completion_info( ic_completion_env_t* cenv, const char* display,
+                               const char* help );
+
 /// \}
 
 //--------------------------------------------------------------
@@ -510,6 +571,13 @@ bool ic_keyaction_completions_suppressed( const ic_keyaction_env_t* kenv );
 /// it, then insert `text` in their place and move the cursor past it.
 /// Returns `false` if `kenv` is invalid.
 bool ic_keyaction_replace( ic_keyaction_env_t* kenv, const char* text, long delete_before, long delete_after );
+
+/// Open the live completion list (from `ic_enable_completion_live_list`)
+/// for the word at the cursor from within a key action, exactly as TAB
+/// would: completing directly if there is a single, unambiguous match,
+/// or revealing the list with nothing selected if there are several.
+/// Does nothing if the live list isn't enabled.
+void ic_keyaction_open_completions( ic_keyaction_env_t* kenv );
 
 /// \}
 
