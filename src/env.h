@@ -51,6 +51,11 @@ struct ic_env_s {
   bool            no_autobrace;     // enable automatic brace insertion?
   bool            no_lscolors;      // use LSCOLORS/LS_COLORS to colorize file name completions?
   bool            transpose_gosling; // transpose the last two characters when swapping at end of line?
+  bool            complete_live_list;    // show all completions, one per line, as you type?
+  bool            complete_accept_on_space; // does SPACE commit the live list selection first?
+  bool            complete_no_numbers;   // suppress the leading " N " index column in the completion list?
+  bool            complete_no_selection_arrow; // suppress the selection arrow/"*" marker?
+  bool            complete_inverse_selection; // render the whole selected row in inverse video?
   long            hint_delay;       // delay before displaying a hint in milliseconds
 };
 
