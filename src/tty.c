@@ -41,6 +41,7 @@ struct tty_s {
   bool      is_utf8;                // is the input stream in utf-8 mode?
   bool      has_term_resize_event;  // are resize events generated?
   bool      term_resize_event;      // did a term resize happen?
+  bool      input_closed;           // input stream hit eof or an unrecoverable read error
   alloc_t*  mem;                    // memory allocator
   code_t    pushbuf[TTY_PUSH_MAX];  // push back buffer for full key codes
   ssize_t   push_count;
@@ -154,7 +155,13 @@ ic_private bool tty_read_timeout(tty_t* tty, long timeout_ms, code_t* code)
 
   // read a single char/byte from a character stream
   uint8_t c;
-  if (!tty_readc_noblock(tty, &c, timeout_ms)) return false;
+  if (!tty_readc_noblock(tty, &c, timeout_ms)) {
+    if (tty->input_closed) {
+      *code = KEY_EVENT_STOP;
+      return true;
+    }
+    return false;
+  }
 
   if (c == KEY_ESC) {
     // escape sequence?
@@ -457,6 +464,12 @@ static bool tty_readc_blocking(tty_t* tty, uint8_t* c) {
   if (nread < 0 && errno == EINTR) {
     // can happen on SIGWINCH signal for terminal resize
   }
+  else if (nread <= 0) {
+    // the input stream is gone for good (eof, or a hangup/io error on
+    // the other end); latch this so tty_read_timeout can report a hard
+    // stop instead of endlessly re-reading an fd that never blocks again
+    tty->input_closed = true;
+  }
   return (nread == 1);
 }
 
@@ -666,7 +679,9 @@ ic_private bool tty_start_raw(tty_t* tty) {
 ic_private void tty_end_raw(tty_t* tty) {
   if (tty == NULL) return;
   if (!tty->raw_enabled) return;
-  tty->cpush_count = 0;
+  // note: do not clear cpush_count here -- tty_read_esc_response pushes
+  // back real input bytes that arrived instead of an expected escape
+  // response (see its comment), and those still need to be read back
   if (tcsetattr(tty->fd_in,TCSANOW,&tty->orig_ios) < 0) return;
   tty->raw_enabled = false;
 }
