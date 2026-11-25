@@ -25,6 +25,7 @@ typedef struct completion_s {
   const char* help;
   ssize_t     delete_before;
   ssize_t     delete_after;
+  bool        informational; // a display-only row added by ic_add_completion_info(); see completions_add_info()
 } completion_t;
 
 struct completions_s {
@@ -32,6 +33,7 @@ struct completions_s {
   void* completer_arg;
   ssize_t completer_max;
   ssize_t count;
+  ssize_t info_count; // number of informational (display-only) entries, always sorted first
   ssize_t len;
   completion_t* elems;
   alloc_t* mem;
@@ -60,18 +62,19 @@ ic_private void completions_free(completions_t* cms) {
 }
 
 
-ic_private void completions_clear(completions_t* cms) {  
+ic_private void completions_clear(completions_t* cms) {
   while (cms->count > 0) {
     completion_t* cm = cms->elems + cms->count - 1;
     mem_free( cms->mem, cm->display);
     mem_free( cms->mem, cm->replacement);
     mem_free( cms->mem, cm->help);
     memset(cm,0,sizeof(*cm));
-    cms->count--;    
+    cms->count--;
   }
+  cms->info_count = 0;
 }
 
-static bool completions_push(completions_t* cms, const char* replacement, const char* display, const char* help, ssize_t delete_before, ssize_t delete_after)
+static bool completions_push(completions_t* cms, const char* replacement, const char* display, const char* help, ssize_t delete_before, ssize_t delete_after, bool informational)
 {
   if (cms->count >= cms->len) {
     ssize_t newlen = (cms->len <= 0 ? 32 : cms->len*2);
@@ -87,12 +90,30 @@ static bool completions_push(completions_t* cms, const char* replacement, const 
   cm->help          = mem_strdup(cms->mem,help);
   cm->delete_before = delete_before;
   cm->delete_after  = delete_after;
+  cm->informational = informational;
   cms->count++;
   return true;
 }
 
+// an informational row is a display-only entry that always sorts first
+// (its replacement is "", which collates before any non-empty name) and
+// takes no part in completion: it is excluded from the "real" count
+// returned here, from the single-/multi-candidate logic that count
+// drives, and from completions_apply_longest_prefix()'s prefix scan.
+ic_private bool completions_add_info(completions_t* cms, const char* display, const char* help) {
+  if (cms->completer_max <= 0) return false;
+  cms->completer_max--;
+  if (!completions_push(cms, "", display, help, 0, 0, true)) return false;
+  cms->info_count++;
+  return true;
+}
+
 ic_private ssize_t completions_count(completions_t* cms) {
-  return cms->count;
+  return cms->count - cms->info_count;
+}
+
+ic_private ssize_t completions_count_info(completions_t* cms) {
+  return cms->info_count;
 }
 
 static bool completions_contains(completions_t* cms, const char* replacement) {
@@ -108,7 +129,7 @@ ic_private bool completions_add(completions_t* cms, const char* replacement, con
   cms->completer_max--;
   //debug_msg("completion: add: %d,%d, %s\n", delete_before, delete_after, replacement);
   if (!completions_contains(cms,replacement)) {
-    return completions_push(cms, replacement, display, help, delete_before, delete_after);
+    return completions_push(cms, replacement, display, help, delete_before, delete_after, false);
   }
   return true;
 }
@@ -209,14 +230,25 @@ ic_private void completions_sort(completions_t* cms) {
 
 #define IC_MAX_PREFIX  (256)
 
-// find longest common prefix and complete with that.
-ic_private ssize_t completions_apply_longest_prefix(completions_t* cms, stringbuf_t* sbuf, ssize_t pos) {
-  if (cms->count <= 1) {
-    return completions_apply(cms,0,sbuf,pos);
+// find longest common prefix and complete with that.  If full_token is
+// not NULL, set it to whether that prefix ends at a word boundary in
+// every candidate (as opposed to being a partial word shared by longer,
+// still-ambiguous matches).
+ic_private ssize_t completions_apply_longest_prefix(completions_t* cms, stringbuf_t* sbuf, ssize_t pos, bool* full_token) {
+  // informational entries (see completions_add_info()) always sort first
+  // and take no part in this scan
+  ssize_t first = cms->info_count;
+  ssize_t real_count = cms->count - first;
+
+  if (full_token != NULL) {
+    *full_token = (real_count <= 1);
+  }
+  if (real_count <= 1) {
+    return (real_count <= 0 ? IC_COMP_APPLY_NOOP : completions_apply(cms,first,sbuf,pos));
   }
 
-  // set initial prefix to the first entry
-  completion_t* cm = completions_get(cms, 0);
+  // set initial prefix to the first real entry
+  completion_t* cm = completions_get(cms, first);
   if (cm == NULL) return IC_COMP_APPLY_FAIL;
 
   char prefix[IC_MAX_PREFIX+1];
@@ -231,15 +263,15 @@ ic_private ssize_t completions_apply_longest_prefix(completions_t* cms, stringbu
   if (plen > 0 && (uint8_t)prefix[plen-1] >= 0xC0) { plen -= 1; }
   prefix[plen] = 0;
 
-  // and visit all others to find the longest common prefix
-  for(ssize_t i = 1; i < cms->count; i++) {
+  // and visit all other real entries to find the longest common prefix
+  for(ssize_t i = first + 1; i < cms->count; i++) {
     cm = completions_get(cms,i);
     if (cm->delete_before != delete_before) {  // deletions must match delete_before
       prefix[0] = 0;
       break;
     }
     // check if it is still a prefix
-    const char* r = cm->replacement;    
+    const char* r = cm->replacement;
     ssize_t j;
     for(j = 0; prefix[j] != 0 && r[j] != 0; j++) {
       if (prefix[j] != r[j]) break;
@@ -251,6 +283,21 @@ ic_private ssize_t completions_apply_longest_prefix(completions_t* cms, stringbu
   // check the length
   ssize_t len = ic_strlen(prefix);
   if (len <= 0 || len < delete_before) return IC_COMP_APPLY_NOOP;
+
+  // the prefix is a full token only if every real candidate either ends
+  // exactly there or continues with a separator right after it
+  if (full_token != NULL) {
+    bool tok = true;
+    for (ssize_t i = first; i < cms->count; i++) {
+      cm = completions_get(cms,i);
+      char next = cm->replacement[len];
+      if (next != 0 && !ic_char_is_separator(&next,1)) {
+        tok = false;
+        break;
+      }
+    }
+    *full_token = tok;
+  }
 
   // we found a prefix :-)
   completion_t cprefix;
@@ -294,6 +341,11 @@ ic_public bool ic_add_completion_ex( ic_completion_env_t* cenv, const char* repl
 
 ic_public bool ic_add_completion_prim(ic_completion_env_t* cenv, const char* replacement, const char* display, const char* help, long delete_before, long delete_after) {
   return (*cenv->complete)(cenv->env, cenv->closure, replacement, display, help, delete_before, delete_after );
+}
+
+ic_public bool ic_add_completion_info(ic_completion_env_t* cenv, const char* display, const char* help) {
+  if (cenv == NULL) return false;
+  return completions_add_info(cenv->env->completions, display, help);
 }
 
 static bool prim_add_completion(ic_env_t* env, void* funenv, const char* replacement, const char* display, const char* help, long delete_before, long delete_after) {
