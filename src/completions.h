@@ -32,7 +32,9 @@ ic_private completions_t* completions_new(alloc_t* mem);
 ic_private void        completions_free(completions_t* cms);
 ic_private void        completions_clear(completions_t* cms);
 ic_private bool        completions_add(completions_t* cms , const char* replacement, const char* display, const char* help, ssize_t delete_before, ssize_t delete_after);
+ic_private bool        completions_add_info(completions_t* cms, const char* display, const char* help);
 ic_private ssize_t     completions_count(completions_t* cms);
+ic_private ssize_t     completions_count_info(completions_t* cms);
 ic_private ssize_t     completions_generate(struct ic_env_s* env, completions_t* cms , const char* input, ssize_t pos, ssize_t max);
 ic_private void        completions_sort(completions_t* cms);
 ic_private void        completions_set_completer(completions_t* cms, ic_completer_fun_t* completer, void* arg);
@@ -41,7 +43,7 @@ ic_private const char* completions_get_hint(completions_t* cms, ssize_t index, c
 ic_private void        completions_get_completer(completions_t* cms, ic_completer_fun_t** completer, void** arg);
 
 ic_private ssize_t     completions_apply(completions_t* cms, ssize_t index, stringbuf_t* sbuf, ssize_t pos);
-ic_private ssize_t     completions_apply_longest_prefix(completions_t* cms, stringbuf_t* sbuf, ssize_t pos);
+ic_private ssize_t     completions_apply_longest_prefix(completions_t* cms, stringbuf_t* sbuf, ssize_t pos, bool* full_token);
 
 //-------------------------------------------------------------
 // Completion environment
