@@ -36,7 +36,10 @@ typedef struct editor_s {
   bool          modified;     // has a modification happened? (used for history navigation for example)
   bool          disable_undo; // temporarily disable auto undo (for history search)
   bool          completions_suppressed; // completions dismissed for the current word (cleared at the next word boundary)
-  ssize_t       history_idx;  // current index in the history 
+  ssize_t       list_selected; // selected row in the live completion list, -1 when none is selected (editline_completion.c)
+  ssize_t       list_count;   // number of rows in the live completion list, 0 when hidden
+  bool          list_open;    // has tab/alt-? revealed the live completion list for the current word?
+  ssize_t       history_idx;  // current index in the history
   editstate_t*  undo;         // undo buffer  
   editstate_t*  redo;         // redo buffer
   const char*   prompt_text;  // text of the prompt before the prompt marker    
@@ -55,6 +58,9 @@ typedef struct editor_s {
 //-------------------------------------------------------------
 static char* edit_line( ic_env_t* env, const char* prompt_text );  // defined at bottom
 static void edit_refresh(ic_env_t* env, editor_t* eb);
+static void edit_update_live_list(ic_env_t* env, editor_t* eb);      // defined in editline_completion.c
+static bool edit_complete_live_selected(ic_env_t* env, editor_t* eb); // defined in editline_completion.c
+static bool edit_complete_live_prefix(ic_env_t* env, editor_t* eb); // defined in editline_completion.c
 
 ic_private char* ic_editline(ic_env_t* env, const char* prompt_text) {
   tty_start_raw(env->tty);
@@ -115,6 +121,7 @@ static void editor_start_modify(editor_t* eb ) {
   editor_undo_capture(eb);
   editstate_done(eb->mem, &eb->redo);  // clear redo
   eb->modified = true;
+  eb->list_selected = -1;  // text changed: live completion list reopens with nothing selected
 }
 
 
@@ -358,7 +365,6 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
 
   // restore input by removing the hint
   sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint));
-  sbuf_delete_at(eb->extra, 0, sbuf_len(eb->hint_help));
   attrbuf_clear(eb->attrs);
   attrbuf_clear(eb->attrs_extra);
   sbuf_free(extra);
@@ -459,38 +465,43 @@ static void edit_refresh_hint(ic_env_t* env, editor_t* eb) {
   }
     
   // and see if we can construct a hint (displayed after a delay)
-  ssize_t count = completions_generate(env, env->completions, sbuf_string(eb->input), eb->pos, 2);
-  if (count == 1) {
-    const char* help = NULL;
-    const char* hint = completions_get_hint(env->completions, 0, &help);
-    if (hint != NULL) {
-      sbuf_replace(eb->hint, hint); 
-      editor_append_hint_help(eb, help);
-      // do auto-tabbing?
-      if (env->complete_autotab) {
-        stringbuf_t* sb = sbuf_new(env->mem);  // temporary buffer for completion
-        if (sb != NULL) { 
-          sbuf_replace( sb, sbuf_string(eb->input) ); 
-          ssize_t pos = eb->pos;
-          const char* extra_hint = hint;
-          do {
-            ssize_t newpos = sbuf_insert_at( sb, extra_hint, pos );
-            if (newpos <= pos) break;
-            pos = newpos;
-            count = completions_generate(env, env->completions, sbuf_string(sb), pos, 2);
-            if (count == 1) {
-              const char* extra_help = NULL;
-              extra_hint = completions_get_hint(env->completions, 0, &extra_help);
-              if (extra_hint != NULL) {
-                editor_append_hint_help(eb, extra_help);
-                sbuf_append(eb->hint, extra_hint);
+  if (env->complete_live_list) {
+    edit_update_live_list(env, eb);
+  }
+  else {
+    ssize_t count = completions_generate(env, env->completions, sbuf_string(eb->input), eb->pos, 2);
+    if (count == 1) {
+      const char* help = NULL;
+      const char* hint = completions_get_hint(env->completions, 0, &help);
+      if (hint != NULL) {
+        sbuf_replace(eb->hint, hint);
+        editor_append_hint_help(eb, help);
+        // do auto-tabbing?
+        if (env->complete_autotab) {
+          stringbuf_t* sb = sbuf_new(env->mem);  // temporary buffer for completion
+          if (sb != NULL) {
+            sbuf_replace( sb, sbuf_string(eb->input) );
+            ssize_t pos = eb->pos;
+            const char* extra_hint = hint;
+            do {
+              ssize_t newpos = sbuf_insert_at( sb, extra_hint, pos );
+              if (newpos <= pos) break;
+              pos = newpos;
+              count = completions_generate(env, env->completions, sbuf_string(sb), pos, 2);
+              if (count == 1) {
+                const char* extra_help = NULL;
+                extra_hint = completions_get_hint(env->completions, 0, &extra_help);
+                if (extra_hint != NULL) {
+                  editor_append_hint_help(eb, extra_help);
+                  sbuf_append(eb->hint, extra_hint);
+                }
               }
             }
+            while(count == 1);
+            sbuf_free(sb);
           }
-          while(count == 1);       
-          sbuf_free(sb);
-        }          
-      }      
+        }
+      }
     }
   }
 
@@ -624,14 +635,14 @@ static void edit_backspace(ic_env_t* env, editor_t* eb) {
   if (eb->pos <= 0) return;
   editor_start_modify(eb);
   eb->pos = sbuf_delete_char_before(eb->input,eb->pos);
-  edit_refresh(env,eb);
+  if (env->complete_live_list) edit_refresh_hint(env,eb); else edit_refresh(env,eb);
 }
 
 static void edit_delete_char(ic_env_t* env, editor_t* eb) {
   if (eb->pos >= sbuf_len(eb->input)) return;
   editor_start_modify(eb);
   sbuf_delete_char_at(eb->input,eb->pos);
-  edit_refresh(env,eb);
+  if (env->complete_live_list) edit_refresh_hint(env,eb); else edit_refresh(env,eb);
 }
 
 static void edit_delete_all(ic_env_t* env, editor_t* eb) {
@@ -840,6 +851,14 @@ static bool edit_keyaction_replace(ic_env_t* env, void* closure, const char* tex
   return true;
 }
 
+// backs ic_keyaction_open_completions(): defined in editline_completion.c
+static void edit_open_completions(ic_env_t* env, editor_t* eb);
+
+static void edit_keyaction_open_completions(ic_env_t* env, void* closure) {
+  editor_t* eb = (editor_t*)closure;
+  edit_open_completions(env, eb);
+}
+
 //-------------------------------------------------------------
 // Help
 //-------------------------------------------------------------
@@ -934,10 +953,17 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     sbuf_clear(eb.hint);
     sbuf_clear(eb.hint_help);
 
-    // if the user tries to move into a hint with left-cursor or end, we complete it first
-    if ((c == KEY_RIGHT || c == KEY_END) && had_hint) {
-      edit_generate_completions(env, &eb, true);
-      c = KEY_NONE;
+    // if the user tries to move into a hint with left-cursor, end, or
+    // enter, we complete it first; enter then falls through to the
+    // KEY_ENTER handling below so a single keystroke completes and submits
+    if ((c == KEY_RIGHT || c == KEY_END || c == KEY_ENTER) && had_hint) {
+      if (env->complete_live_list && eb.list_count > 0) {
+        edit_complete_live_selected(env, &eb);
+      }
+      else {
+        edit_generate_completions(env, &eb, true);
+      }
+      if (c != KEY_ENTER) c = KEY_NONE;
     }
 
     // a user key binding takes priority over all built-in handling of this key,
@@ -953,8 +979,38 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       kenv.suppressed = &eb.completions_suppressed;
       kenv.closure    = &eb;
       kenv.replace    = &edit_keyaction_replace;
+      kenv.open_completions = &edit_keyaction_open_completions;
       (*kaction)(&kenv);
       continue;
+    }
+
+    // while the live completion list is showing, a handful of keys take on
+    // list-aware meanings, reverting to their normal meaning the moment
+    // there are no candidates
+    if (env->complete_live_list) {
+      if (c == KEY_TAB || c == WITH_ALT('?')) {
+        edit_open_completions(env, &eb);
+        continue;
+      }
+      if (eb.list_open && eb.list_count > 1) {
+        if (c == KEY_DOWN || c == KEY_CTRL_DOWN) {
+          eb.list_selected = (eb.list_selected + 1 >= eb.list_count
+                                ? -1 : eb.list_selected + 1);
+          edit_refresh_hint(env, &eb);
+          continue;
+        }
+        if (c == KEY_UP || c == KEY_SHIFT_TAB || c == KEY_CTRL_UP) {
+          eb.list_selected = (eb.list_selected <= -1
+                                ? eb.list_count - 1 : eb.list_selected - 1);
+          edit_refresh_hint(env, &eb);
+          continue;
+        }
+      }
+      if (env->complete_accept_on_space && c == ' ' && eb.list_count > 0) {
+        if (edit_complete_live_prefix(env, &eb))
+          edit_insert_char(env, &eb, ' ');
+        continue;
+      }
     }
 
     // Operations that may return
