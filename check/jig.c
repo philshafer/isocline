@@ -274,6 +274,8 @@ static void
 jig_completer (ic_completion_env_t *cenv, const char *prefix)
 {
     static const char *cmds[] = {
+	"show fish and chips", "show fish and bucket", "show fish and me",
+	"show why this works", "show why more or less", "show why more works",
         "show interfaces", "show version", "show arp", NULL
     };
     long delete_before = (long) strlen(prefix);
@@ -510,7 +512,7 @@ jig_lastarg_action (ic_keyaction_env_t *kenv)
 }
 
 static void
-run_child_readline_loop (void)
+run_child_readline_loop (const char *path)
 {
     ic_set_history(NULL, -1);
     ic_set_default_completer(&jig_completer, NULL);
@@ -521,6 +523,22 @@ run_child_readline_loop (void)
     ic_bind_key('?', &jig_help_action, NULL);
     ic_bind_key(IC_KEY_MOD_ALT | '/', &jig_dabbrev_action, NULL);
     ic_bind_key(IC_KEY_MOD_ALT | '.', &jig_lastarg_action, NULL);
+
+    /*
+     * The live completion list (step 7) changes what appears on
+     * screen for every match, including a single one (no more plain
+     * inline hint), so unlike the other features above it is opt-in
+     * per test rather than always on -- enabled only for test files
+     * whose basename says so, to leave every other ".keys" test's
+     * golden output alone.
+     */
+    const char *base = strrchr(path, '/');
+
+    base = (base == NULL ? path : base + 1);
+    if (strncmp(base, "livelist", 8) == 0) {
+        ic_enable_completion_live_list(true);
+        ic_enable_completion_accept_on_space(true);
+    }
 
     for (;;) {
         char *line = ic_readline("jig> ");
@@ -537,13 +555,16 @@ run_child_readline_loop (void)
 /*
  * No test file given: run ic_readline() directly against the real
  * tty (no pty, no fork, no scripted keys) so a human can drive it by
- * hand -- same completer as the ".keys" tests, for convenience.
+ * hand -- same completer and live-list/accept-on-space behavior as
+ * "livelist.keys", for convenience.
  */
 static void
 run_interactive (void)
 {
     ic_set_history(NULL, -1);
     ic_set_default_completer(&jig_completer, NULL);
+    ic_enable_completion_live_list(true);
+    ic_enable_completion_accept_on_space(true);
 
     printf("jig: interactive mode (Ctrl-D to quit)\n");
 
@@ -638,7 +659,7 @@ run_keys_test (const char *path)
             _exit(127);
         }
 
-        run_child_readline_loop();
+        run_child_readline_loop(path);
         _exit(0);
     }
 
