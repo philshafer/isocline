@@ -254,6 +254,41 @@ ic_public bool ic_enable_completion_preview( bool enable ) {
   return !prev;
 }
 
+ic_public bool ic_enable_completion_live_list( bool enable ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return false;
+  bool prev = env->complete_live_list;
+  env->complete_live_list = enable;
+  return prev;
+}
+
+ic_public bool ic_enable_completion_accept_on_space( bool enable ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return false;
+  bool prev = env->complete_accept_on_space;
+  env->complete_accept_on_space = enable;
+  return prev;
+}
+
+ic_public bool ic_no_numbers( bool enable ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return false;
+  bool prev = env->complete_no_numbers;
+  env->complete_no_numbers = enable;
+  return prev;
+}
+
+ic_public bool ic_no_selection_arrow( bool enable ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return false;
+  bool prev = env->complete_no_selection_arrow;
+  env->complete_no_selection_arrow = enable;
+  return prev;
+}
+
+ic_public bool ic_inverse_selection( bool enable ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return false;
+  bool prev = env->complete_inverse_selection;
+  env->complete_inverse_selection = enable;
+  return prev;
+}
+
 ic_public bool ic_enable_multiline_indent(bool enable) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return false;
   bool prev = env->no_multiline_indent;
@@ -570,6 +605,7 @@ static ic_env_t* ic_env_create( ic_malloc_fun_t* _malloc, ic_realloc_fun_t* _rea
   bbcode_style_def(env->bbcode, "ic-info",      "ansi-darkgray" );
   bbcode_style_def(env->bbcode, "ic-diminish",  "ansi-lightgray" );
   bbcode_style_def(env->bbcode, "ic-emphasis",  "#ffffd7" );
+  bbcode_style_def(env->bbcode, "ic-selected",  "r" );
   bbcode_style_def(env->bbcode, "ic-hint",      "ansi-darkgray" );
   bbcode_style_def(env->bbcode, "ic-error",     "#d70000" );
   bbcode_style_def(env->bbcode, "ic-bracematch","ansi-white"); //  color = #F7DC6F" );
