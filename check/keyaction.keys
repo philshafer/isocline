@@ -15,7 +15,7 @@
 # ends up literally containing "?".
 i 2
 + "ab
-k ?
++ ?
 k ENTER
 w 20
 #
@@ -24,7 +24,7 @@ w 20
 # line -- "show v" narrows its three fixed commands down to just
 # "show version".
 + show v
-k ?
++ ?
 k ENTER
 w 20
 #
